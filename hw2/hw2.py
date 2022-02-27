@@ -139,22 +139,23 @@ class BasicBlock(nn.Module):
         super(BasicBlock, self).__init__()
 
         self.block = nn.Sequential(
-            nn.Linear(input_dim, 1024),
-            nn.ReLU(),
+            nn.Linear(input_dim, 2048),
+            nn.SiLU(),
+            nn.BatchNorm1d(2048),
+            nn.Dropout(0.3),
+
+            nn.Linear(2048, 1024),
+            nn.SiLU(),
             nn.BatchNorm1d(1024),
+            nn.Dropout(0.3),
             
             nn.Linear(1024, 512),
+            nn.SiLU(),
             nn.BatchNorm1d(512),
 
-            nn.Linear(512, 256),
-            nn.ReLU(),
-            nn.BatchNorm1d(256),
+            nn.Linear(512, output_dim),
+            
 
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.BatchNorm1d(128),
-
-            nn.Linear(128, output_dim),
         )
 
     def forward(self, x):
@@ -168,6 +169,7 @@ class Classifier(nn.Module):
 
         self.fc = nn.Sequential(
             BasicBlock(input_dim, hidden_dim),
+            # 讓 list 變成獨立的 argument f(x) x= [1,2,3]  fx =f(1, 2, 3)
             *[BasicBlock(hidden_dim, hidden_dim) for _ in range(hidden_layers)],
             nn.Linear(hidden_dim, output_dim)
         )
@@ -176,6 +178,43 @@ class Classifier(nn.Module):
         x = self.fc(x)
         return x
 
+# FocalLoss
+import torch.nn.functional as F
+from torch.autograd import Variable
+
+class FocalLoss(nn.Module):
+    def __init__(self, gamma=2, alpha=None, size_average=True):
+        super(FocalLoss, self).__init__()
+        self.gamma = gamma
+        self.alpha = alpha
+        if isinstance(alpha,(float,int)): self.alpha = torch.Tensor([alpha,1-alpha])
+        if isinstance(alpha,list): self.alpha = torch.Tensor(alpha)
+        self.size_average = size_average
+
+    def forward(self, input, target):
+        if input.dim()>2:
+            input = input.view(input.size(0),input.size(1),-1)  # N,C,H,W => N,C,H*W
+            input = input.transpose(1,2)    # N,C,H*W => N,H*W,C
+            input = input.contiguous().view(-1,input.size(2))   # N,H*W,C => N*H*W,C
+        target = target.view(-1,1)
+
+        logpt = F.log_softmax(input)
+        logpt = logpt.gather(1,target)
+        logpt = logpt.view(-1)
+        pt = Variable(logpt.data.exp())
+
+        if self.alpha is not None:
+            if self.alpha.type()!=input.data.type():
+                self.alpha = self.alpha.type_as(input.data)
+            at = self.alpha.gather(0,target.data.view(-1))
+            logpt = logpt * Variable(at)
+
+        loss = -1 * (1-pt)**self.gamma * logpt
+        if self.size_average: return loss.mean()
+        else: return loss.sum()
+
+
+
 """## Hyper-parameters"""
 
 # data prarameters
@@ -183,7 +222,7 @@ concat_nframes = 11              # the number of frames to concat with, n must b
 train_ratio = 0.8               # the ratio of data used for training, the rest will be used for validation
 
 # training parameters
-seed = 0                        # random seed
+seed = 123                       # random seed
 batch_size = 2048                # batch size
 num_epoch = 100                   # the number of training epoch
 learning_rate = 0.0001          # learning rate
@@ -234,7 +273,7 @@ same_seeds(seed)
 
 # create model, define a loss function, and optimizer
 model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=hidden_dim).to(device)
-criterion = nn.CrossEntropyLoss() 
+criterion = FocalLoss()
 optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
 """## Training"""
