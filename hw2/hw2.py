@@ -159,7 +159,12 @@ class BasicBlock(nn.Module):
             nn.BatchNorm1d(256),
             nn.Dropout(0.3),
 
-            nn.Linear(256, output_dim),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.BatchNorm1d(128),
+            nn.Dropout(0.3),
+
+            nn.Linear(128, output_dim),
         )
 
     def forward(self, x):
@@ -277,8 +282,9 @@ same_seeds(seed)
 
 # create model, define a loss function, and optimizer
 model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=hidden_dim).to(device)
-criterion = FocalLoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)
+#criterion = FocalLoss()
+criterion = nn.CrossEntropyLoss()
+#optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)
 
 """## Training"""
 
@@ -289,6 +295,12 @@ for epoch in range(num_epoch):
     val_acc = 0.0
     val_loss = 0.0
     
+    if epoch == 0:
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)
+    elif epoch == 50:
+        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+
+
     # training
     model.train() # set the model to training mode
     for i, batch in enumerate(tqdm(train_loader)):
