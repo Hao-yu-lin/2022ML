@@ -139,32 +139,27 @@ class BasicBlock(nn.Module):
         super(BasicBlock, self).__init__()
 
         self.block = nn.Sequential(
-            nn.Linear(input_dim, 2048),
-            nn.ReLU(),
+                        nn.Linear(input_dim, 2048),
+            nn.SiLU(),
             nn.BatchNorm1d(2048),
             nn.Dropout(0.3),
 
             nn.Linear(2048, 1024),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.BatchNorm1d(1024),
             nn.Dropout(0.3),
             
             nn.Linear(1024, 512),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.BatchNorm1d(512),
             nn.Dropout(0.3),
 
             nn.Linear(512, 256),
-            nn.ReLU(),
+            nn.SiLU(),
             nn.BatchNorm1d(256),
             nn.Dropout(0.3),
 
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.BatchNorm1d(128),
-            nn.Dropout(0.3),
-
-            nn.Linear(128, output_dim),
+            nn.Linear(256, output_dim),
         )
 
     def forward(self, x):
