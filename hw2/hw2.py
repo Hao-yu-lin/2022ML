@@ -140,22 +140,26 @@ class BasicBlock(nn.Module):
 
         self.block = nn.Sequential(
             nn.Linear(input_dim, 2048),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.BatchNorm1d(2048),
             nn.Dropout(0.3),
 
             nn.Linear(2048, 1024),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.BatchNorm1d(1024),
             nn.Dropout(0.3),
             
             nn.Linear(1024, 512),
-            nn.SiLU(),
+            nn.ReLU(),
             nn.BatchNorm1d(512),
+            nn.Dropout(0.3),
 
-            nn.Linear(512, output_dim),
-            
+            nn.Linear(512, 256),
+            nn.ReLU(),
+            nn.BatchNorm1d(256),
+            nn.Dropout(0.3),
 
+            nn.Linear(256, output_dim),
         )
 
     def forward(self, x):
@@ -218,12 +222,12 @@ class FocalLoss(nn.Module):
 """## Hyper-parameters"""
 
 # data prarameters
-concat_nframes = 11              # the number of frames to concat with, n must be odd (total 2k+1 = n frames)
+concat_nframes = 21              # the number of frames to concat with, n must be odd (total 2k+1 = n frames)
 train_ratio = 0.8               # the ratio of data used for training, the rest will be used for validation
 
 # training parameters
-seed = 123                       # random seed
-batch_size = 2048                # batch size
+seed = 91322                       # random seed
+batch_size = 1024                # batch size
 num_epoch = 100                   # the number of training epoch
 learning_rate = 0.0001          # learning rate
 model_path = './model.ckpt'     # the path where the checkpoint will be saved
@@ -274,7 +278,7 @@ same_seeds(seed)
 # create model, define a loss function, and optimizer
 model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=hidden_dim).to(device)
 criterion = FocalLoss()
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)
 
 """## Training"""
 
