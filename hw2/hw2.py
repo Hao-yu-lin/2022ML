@@ -149,17 +149,17 @@ class BasicBlock(nn.Module):
             nn.BatchNorm1d(1024),
             nn.Dropout(0.3),
             
-            nn.Linear(1024, 512),
-            nn.SiLU(),
-            nn.BatchNorm1d(512),
-            nn.Dropout(0.3),
+            # nn.Linear(1024, 512),
+            # nn.SiLU(),
+            # nn.BatchNorm1d(512),
+            # nn.Dropout(0.3),
 
             # nn.Linear(512, 256),
             # nn.SiLU(),
             # nn.BatchNorm1d(256),
             # nn.Dropout(0.3),
 
-            nn.Linear(512, output_dim),
+            nn.Linear(1024, output_dim),
         )
 
     def forward(self, x):
