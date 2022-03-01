@@ -139,7 +139,7 @@ class BasicBlock(nn.Module):
         super(BasicBlock, self).__init__()
 
         self.block = nn.Sequential(
-                        nn.Linear(input_dim, 2048),
+            nn.Linear(input_dim, 2048),
             nn.SiLU(),
             nn.BatchNorm1d(2048),
             nn.Dropout(0.3),
@@ -234,8 +234,8 @@ model_path = './model.ckpt'     # the path where the checkpoint will be saved
 
 # model parameters
 input_dim = 39 * concat_nframes # the input dim of the model, you should not change the value
-hidden_layers = 6               # the number of hidden layers
-hidden_dim = 1024                # the hidden dim
+hidden_layers = 2               # the number of hidden layers
+hidden_dim = 1700                # the hidden dim
 
 """## Prepare dataset and model"""
 
