@@ -142,12 +142,12 @@ class BasicBlock(nn.Module):
             nn.Linear(input_dim, 2048),
             nn.SiLU(),
             nn.BatchNorm1d(2048),
-            nn.Dropout(0.25),
+            nn.Dropout(0.5),
 
             nn.Linear(2048, 1024),
             nn.SiLU(),
             nn.BatchNorm1d(1024),
-            nn.Dropout(0.25),
+            nn.Dropout(0.5),
             
             # nn.Linear(1024, 512),
             # nn.SiLU(),
