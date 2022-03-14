@@ -7,7 +7,7 @@ Original file is located at
     https://colab.research.google.com/drive/15hMu9YiYjE_6HY99UXon2vKGk2KwugWu
 
 # HW3 Image Classification
-## We strongly recommend that you run with Kaggle for this homework
+## We strongly recommend t√hat you run with Kaggle for this homework
 https://www.kaggle.com/c/ml2022spring-hw3b/code?competitionId=34954&sortBy=dateCreated
 
 # Get Data
@@ -30,6 +30,11 @@ from PIL import Image
 # "ConcatDataset" and "Subset" are possibly useful when doing semi-supervised learning.
 from torch.utils.data import ConcatDataset, DataLoader, Subset, Dataset
 from torchvision.datasets import DatasetFolder, VisionDataset
+from torchsummary import summary
+from sklearn.model_selection import KFold
+
+
+
 
 # This is for the progress bar.
 from tqdm.auto import tqdm
@@ -56,19 +61,28 @@ test_tfm = transforms.Compose([
     # ToTensor() should be the last one of the transforms.
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    # transforms.Resize((128, 128)),
+    # # You may add some transforms here.
+    # # ToTensor() should be the last one of the transforms.
+    # transforms.ToTensor(),
 ])
 
 # However, it is also possible to use augmentation in the testing phase.
 # You may use train_tfm to produce a variety of images and then test using ensemble methods
 train_tfm = transforms.Compose([
-    # Resize the image into a fixed shape (height = width = 128)
-    transforms.RandomRotation(40),
-    transforms.RandomAffine(degrees=0, translate=(0.2, 0.2), shear=0.2),
+    transforms.RandomGrayscale(p = 0.3),
+    transforms.RandomRotation(30),
+    transforms.RandomAffine(degrees=0, translate=(0.3, 0.3), shear=0.3),
     transforms.RandomHorizontalFlip(p=0.5),
     transforms.Resize((224, 224)),
-    # ToTensor() should be the last one of the transforms.
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+
+    # transforms.Resize((128, 128)),
+    # # You may add some transforms here.
+    # # ToTensor() should be the last one of the transforms.
+    # transforms.ToTensor(),
+
 ])
 
 """## **Datasets**
@@ -107,7 +121,7 @@ class Classifier(nn.Module):
         # torch.nn.MaxPool2d(kernel_size, stride, padding)
         # input 維度 [3, 128, 128]
         self.cnn = nn.Sequential(
- # 3 * 224 * 224 -> 64 * 111 * 111
+            # 3 * 224 * 224 -> 64 * 111 * 111
             nn.Conv2d(3, 32, 3, padding=1),
             nn.BatchNorm2d(32),
             nn.SiLU(),
@@ -150,9 +164,45 @@ class Classifier(nn.Module):
 
         )
 
+        self.testcnn = nn.Sequential(
+            nn.Conv2d(3, 64, 3, 1, 1),  # [64, 128, 128]
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2, 0),      # [64, 64, 64]
+
+            nn.Conv2d(64, 128, 3, 1, 1), # [128, 64, 64]
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2, 0),      # [128, 32, 32]
+
+            nn.Conv2d(128, 256, 3, 1, 1), # [256, 32, 32]
+            nn.BatchNorm2d(256),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2, 0),      # [256, 16, 16]
+
+            nn.Conv2d(256, 512, 3, 1, 1), # [512, 16, 16]
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2, 0),       # [512, 8, 8]
+            
+            nn.Conv2d(512, 512, 3, 1, 1), # [512, 8, 8]
+            nn.BatchNorm2d(512),
+            nn.ReLU(),
+            nn.MaxPool2d(2, 2, 0),       # [512, 4, 4]
+        )
+
+        self.testfc = nn.Sequential(
+            nn.Linear(512*4*4, 1024),
+            nn.ReLU(),
+            nn.Linear(1024, 512),
+            nn.ReLU(),
+            nn.Linear(512, 11)
+        )
     def forward(self, x):
         out = self.cnn(x)
+        # out = self.testcnn(x)
         out = out.view(out.size()[0], -1)
+        # return self.testfc(out)
         return self.fc(out)
 # FocalLoss
 import torch.nn.functional as F
@@ -189,25 +239,154 @@ class FocalLoss(nn.Module):
         if self.size_average: return loss.mean()
         else: return loss.sum()
 
+class Residual_Network(nn.Module):
+    def __init__(self):
+        super(Residual_Network, self).__init__()
+        
+        self.cnn_layer1 = nn.Sequential(
+            nn.Conv2d(3, 32, 3, 1, 1),
+            nn.BatchNorm2d(32),
+        )
+        
+        self.cnn_layer2 = nn.Sequential(
+            nn.Conv2d(32, 32, 3, 1, 1),
+            nn.BatchNorm2d(32),
+        )
+
+        self.cnn_layer3 = nn.Sequential(
+            nn.Conv2d(32, 64, 3, 1, 1),
+            nn.BatchNorm2d(64),
+        )
+
+        self.cnn_layer4 = nn.Sequential(
+            nn.Conv2d(64, 64, 3, 1, 1),
+            nn.BatchNorm2d(64),
+        )
+
+        self.cnn_layer5 = nn.Sequential(
+            nn.Conv2d(64, 128, 3, 1, 1),
+            nn.BatchNorm2d(128),
+        )
+
+        self.cnn_layer6 = nn.Sequential(
+            nn.Conv2d(128, 128, 3, 1, 1),
+            nn.BatchNorm2d(128),
+        )
+
+        self.cnn_layer7 = nn.Sequential(
+            nn.Conv2d(128, 256, 3, 1, 1),
+            nn.BatchNorm2d(256),
+        )
+
+        self.cnn_layer8 = nn.Sequential(
+            nn.Conv2d(256, 256, 3, 1, 1),
+            nn.BatchNorm2d(256),
+        )
+
+        self.cnn_layer9 = nn.Sequential(
+            nn.Conv2d(256, 512, 3, 1, 1),
+            nn.BatchNorm2d(512),
+        )
+
+        self.maxpool = nn.MaxPool2d(2,2,0)
+
+        self.fc_layer = nn.Sequential(
+            nn.Linear(512*7*7, 512),
+            nn.SiLU(),
+            nn.BatchNorm1d(512),
+            nn.Dropout(0.5),
+            nn.Linear(512, 11)
+        )
+        self.silu = nn.SiLU()
+
+    def forward(self, x):
+        # input (x): [batch_size, 3, 128, 128]
+        # output: [batch_size, 11]
+
+        # cov2d
+        # new_height = new_width = (W — KS + P * 2) / S + 1
+
+        # MaxPool
+        # (W - KS + 2P)/S + 1
+
+        # Extract features by convolutional layers.
+        # 3 * 224 * 224 -> 32 * 224 * 224
+        x1 = self.cnn_layer1(x)
+        x1 = self.silu(x1)
+
+        x2 = self.cnn_layer2(x1)
+        x2 = self.silu(x2 + x1)
+        x2 = self.maxpool(x2)
+        # 32 * 112 * 112
+        
+        # 32 * 112 * 112 -> 64 * 112 * 112
+        x3 = self.cnn_layer3(x2)        
+        x3 = self.silu(x3)
+
+        
+        x4 = self.cnn_layer4(x3)       
+        x4 = self.silu(x4 + x3)
+        x4 = self.maxpool(x4)
+        # 64 * 56 * 56
+
+        # 64 * 56 * 56 -> 128 * 56 * 56
+        x5 = self.cnn_layer5(x4)       
+        x5 = self.silu(x5)
+        
+        x6 = self.cnn_layer6(x5)        
+        x6 = self.silu(x6 + x5)
+        x6 = self.maxpool(x6)
+        # 128 * 28 * 28
+
+        # 128 * 28 * 28 -> 256 * 28 * 28
+        x7 = self.cnn_layer7(x6)
+        x7 = self.silu(x7)
+
+        x8 = self.cnn_layer8(x7)
+        x8 = self.silu(x8 + x7)
+        x8 = self.maxpool(x8)
+        # 256 * 14 * 14
+
+        x9 = self.cnn_layer9(x8)
+        x9 = self.silu(x9)
+        x9 = self.maxpool(x9)
+        # 512 * 7 * 7
+
+        # The extracted feature map must be flatten before going to fully-connected layers.
+        xout =x9.view(x9.size()[0], -1)
+
+        # The features are transformed by fully-connected layers to obtain the final logits.
+        xout = self.fc_layer(xout)
+        return xout
 
 batch_size = 32
 _dataset_dir = "./food11"
 # Construct datasets.
 # The argument "loader" tells how torchvision reads the data.
 train_set = FoodDataset(os.path.join(_dataset_dir,"training"), tfm=train_tfm)
-train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
+#train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
 valid_set = FoodDataset(os.path.join(_dataset_dir,"validation"), tfm=test_tfm)
-valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
+#valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
+
+k_folds = 5
+n_epochs = 150
+patience = 300 # If no improvement in 'patience' epochs, early stop
+
+dataset = ConcatDataset([train_set, valid_set])
+kfold = KFold(n_splits=k_folds, shuffle = True)
+
+results_train = {}
+results_valid = {}
 
 # "cuda" only when GPUs are available.
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # The number of training epochs and patience.
-n_epochs = 200
-patience = 300 # If no improvement in 'patience' epochs, early stop
 
 # Initialize a model, and put it on the device specified.
 model = Classifier().to(device)
+#model = Residual_Network().to(device)
+summary(model,(3, 224, 224))
 
 # For the classification task, we use cross-entropy as the measurement of performance.
 # criterion = nn.CrossEntropyLoss()
@@ -220,114 +399,150 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.0003, weight_decay=1e-5)
 stale = 0
 best_acc = 0
 
-for epoch in range(n_epochs):
+for fold, (train_id, test_id) in enumerate(kfold.split(dataset)):
+    # Print
+    print(f'FOLD {fold}')
+    print('--------------------------------')
+    
+    train_subset = Subset(dataset, train_id)
+    valid_subset = Subset(dataset, test_id)
 
-    # ---------- Training ----------
-    # Make sure the model is in train mode before training.
-    model.train()
+    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
+    valid_loader = DataLoader(valid_subset, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
 
-    # These are used to record information in training.
-    train_loss = []
-    train_accs = []
+    for epoch in range(n_epochs):
 
-    for batch in tqdm(train_loader):
+        # ---------- Training ----------
+        # Make sure the model is in train mode before training.
+        model.train()
 
-        # A batch consists of image data and corresponding labels.
-        imgs, labels = batch
-        #imgs = imgs.half()
-        #print(imgs.shape,labels.shape)
+        # These are used to record information in training.
+        train_loss = []
+        train_accs = []
 
-        # Forward the data. (Make sure data and model are on the same device.)
-        logits = model(imgs.to(device))
+        for batch in tqdm(train_loader):
 
-        # Calculate the cross-entropy loss.
-        # We don't need to apply softmax before computing cross-entropy as it is done automatically.
-        loss = criterion(logits, labels.to(device))
+            # A batch consists of image data and corresponding labels.
+            imgs, labels = batch
+            #imgs = imgs.half()
+            #print(imgs.shape,labels.shape)
 
-        # Gradients stored in the parameters in the previous step should be cleared out first.
-        optimizer.zero_grad()
-
-        # Compute the gradients for parameters.
-        loss.backward()
-
-        # Clip the gradient norms for stable training.
-        grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
-
-        # Update the parameters with computed gradients.
-        optimizer.step()
-
-        # Compute the accuracy for current batch.
-        acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
-
-        # Record the loss and accuracy.
-        train_loss.append(loss.item())
-        train_accs.append(acc)
-        
-    train_loss = sum(train_loss) / len(train_loss)
-    train_acc = sum(train_accs) / len(train_accs)
-
-    # Print the information.
-    print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
-
-    # ---------- Validation ----------
-    # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
-    model.eval()
-
-    # These are used to record information in validation.
-    valid_loss = []
-    valid_accs = []
-
-    # Iterate the validation set by batches.
-    for batch in tqdm(valid_loader):
-
-        # A batch consists of image data and corresponding labels.
-        imgs, labels = batch
-        #imgs = imgs.half()
-
-        # We don't need gradient in validation.
-        # Using torch.no_grad() accelerates the forward process.
-        with torch.no_grad():
+            # Forward the data. (Make sure data and model are on the same device.)
             logits = model(imgs.to(device))
 
-        # We can still compute the loss (but not the gradient).
-        loss = criterion(logits, labels.to(device))
+            # Calculate the cross-entropy loss.
+            # We don't need to apply softmax before computing cross-entropy as it is done automatically.
+            loss = criterion(logits, labels.to(device))
 
-        # Compute the accuracy for current batch.
-        acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+            # Gradients stored in the parameters in the previous step should be cleared out first.
+            optimizer.zero_grad()
 
-        # Record the loss and accuracy.
-        valid_loss.append(loss.item())
-        valid_accs.append(acc)
-        #break
+            # Compute the gradients for parameters.
+            loss.backward()
 
-    # The average loss and accuracy for entire validation set is the average of the recorded values.
-    valid_loss = sum(valid_loss) / len(valid_loss)
-    valid_acc = sum(valid_accs) / len(valid_accs)
+            # Clip the gradient norms for stable training.
+            grad_norm = nn.utils.clip_grad_norm_(model.parameters(), max_norm=10)
 
-    # Print the information.
-    print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
+            # Update the parameters with computed gradients.
+            optimizer.step()
+
+            # Compute the accuracy for current batch.
+            acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+
+            # Record the loss and accuracy.
+            train_loss.append(loss.item())
+            train_accs.append(acc)
+            
+        train_loss = sum(train_loss) / len(train_loss)
+        train_acc = sum(train_accs) / len(train_accs)
+
+        if(epoch == 0) : results_train[fold] = train_acc
+        if(results_train[fold] < train_acc): results_train[fold] = train_acc
+        
+        # Print the information.
+        print(f"[ Train | {epoch + 1:03d}/{n_epochs:03d} ] loss = {train_loss:.5f}, acc = {train_acc:.5f}")
+
+        # ---------- Validation ----------
+        # Make sure the model is in eval mode so that some modules like dropout are disabled and work normally.
+        model.eval()
+
+        # These are used to record information in validation.
+        valid_loss = []
+        valid_accs = []
+
+        # Iterate the validation set by batches.
+        for batch in tqdm(valid_loader):
+
+            # A batch consists of image data and corresponding labels.
+            imgs, labels = batch
+            #imgs = imgs.half()
+
+            # We don't need gradient in validation.
+            # Using torch.no_grad() accelerates the forward process.
+            with torch.no_grad():
+                logits = model(imgs.to(device))
+
+            # We can still compute the loss (but not the gradient).
+            loss = criterion(logits, labels.to(device))
+
+            # Compute the accuracy for current batch.
+            acc = (logits.argmax(dim=-1) == labels.to(device)).float().mean()
+
+            # Record the loss and accuracy.
+            valid_loss.append(loss.item())
+            valid_accs.append(acc)
+            #break
+
+        # The average loss and accuracy for entire validation set is the average of the recorded values.
+        valid_loss = sum(valid_loss) / len(valid_loss)
+        valid_acc = sum(valid_accs) / len(valid_accs)
+
+        if(epoch == 0) : results_valid[fold] = valid_acc
+        if(results_valid[fold] < valid_acc): results_valid[fold] = valid_acc
+
+        # Print the information.
+        print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
 
-    # update logs
-    if valid_acc > best_acc:
-        with open(f"./{_exp_name}_log.txt","a"):
-            print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
-    else:
-        with open(f"./{_exp_name}_log.txt","a"):
-            print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
+        # update logs
+        if valid_acc > best_acc:
+            with open(f"./{_exp_name}_log.txt","a"):
+                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
+        else:
+            with open(f"./{_exp_name}_log.txt","a"):
+                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
 
 
-    # save models
-    if valid_acc > best_acc:
-        print(f"Best model found at epoch {epoch}, saving model")
-        torch.save(model.state_dict(), f"{_exp_name}_best.ckpt") # only save best to prevent output memory exceed error
-        best_acc = valid_acc
-        stale = 0
-    else:
-        stale += 1
-        if stale > patience:
-            print(f"No improvment {patience} consecutive epochs, early stopping")
-            break
+        # save models
+        if valid_acc > best_acc:
+            print(f"Best model found at epoch {epoch}, saving model")
+            torch.save(model.state_dict(), f"{_exp_name}_best.ckpt") # only save best to prevent output memory exceed error
+            best_acc = valid_acc
+            stale = 0
+        else:
+            stale += 1
+            if stale > patience:
+                print(f"No improvment {patience} consecutive epochs, early stopping")
+                break
+# Print fold results
+print(f'K-FOLD CROSS VALIDATION RESULTS FOR {k_folds} FOLDS')
+print('--------------------------------')
+print('train')
+sum = 0.0
+for key, value in results_train.items():
+    print(f'Fold {key}: {value} %')
+    sum += value
+    print(f'Average: {sum/len(results_train.items())} %')
+
+print('--------------------------------')
+print('valid')
+for key, value in results_valid.items():
+    print(f'Fold {key}: {value} %')
+    sum += value
+    print(f'Average: {sum/len(results_valid.items())} %')
+
+print('\n')
+print('--------------------------------')
 
 test_set = FoodDataset(os.path.join(_dataset_dir,"test"), tfm=test_tfm)
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=0, pin_memory=True)
@@ -335,6 +550,7 @@ test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_wor
 """# Testing and generate prediction CSV"""
 
 model_best = Classifier().to(device)
+#model_best = Residual_Network().to(device)
 model_best.load_state_dict(torch.load(f"{_exp_name}_best.ckpt"))
 model_best.eval()
 prediction = []
@@ -351,99 +567,3 @@ df = pd.DataFrame()
 df["Id"] = [pad4(i) for i in range(1,len(test_set)+1)]
 df["Category"] = prediction
 df.to_csv("submission.csv",index = False)
-
-"""# Q1. Augmentation Implementation
-## Implement augmentation by finishing train_tfm in the code with image size of your choice. 
-## Directly copy the following block and paste it on GradeScope after you finish the code
-### Your train_tfm must be capable of producing 5+ different results when given an identical image multiple times.
-### Your  train_tfm in the report can be different from train_tfm in your training code.
-
-"""
-
-# train_tfm = transforms.Compose([
-#     # Resize the image into a fixed shape (height = width = 128)
-#     transforms.Resize((128, 128)),
-#     # You need to add some transforms here.
-#     transforms.ToTensor(),
-# ])
-
-# """# Q2. Residual Implementation
-# ![](https://i.imgur.com/GYsq1Ap.png)
-# ## Directly copy the following block and paste it on GradeScope after you finish the code
-
-# """
-
-# from torch import nn
-# class Residual_Network(nn.Module):
-#     def __init__(self):
-#         super(Residual_Network, self).__init__()
-        
-#         self.cnn_layer1 = nn.Sequential(
-#             nn.Conv2d(3, 64, 3, 1, 1),
-#             nn.BatchNorm2d(64),
-#         )
-
-#         self.cnn_layer2 = nn.Sequential(
-#             nn.Conv2d(64, 64, 3, 1, 1),
-#             nn.BatchNorm2d(64),
-#         )
-
-#         self.cnn_layer3 = nn.Sequential(
-#             nn.Conv2d(64, 128, 3, 2, 1),
-#             nn.BatchNorm2d(128),
-#         )
-
-#         self.cnn_layer4 = nn.Sequential(
-#             nn.Conv2d(128, 128, 3, 1, 1),
-#             nn.BatchNorm2d(128),
-#         )
-#         self.cnn_layer5 = nn.Sequential(
-#             nn.Conv2d(128, 256, 3, 2, 1),
-#             nn.BatchNorm2d(256),
-#         )
-#         self.cnn_layer6 = nn.Sequential(
-#             nn.Conv2d(256, 256, 3, 1, 1),
-#             nn.BatchNorm2d(256),
-#         )
-#         self.fc_layer = nn.Sequential(
-#             nn.Linear(256* 32* 32, 256),
-#             nn.ReLU(),
-#             nn.Linear(256, 11)
-#         )
-#         self.relu = nn.ReLU()
-
-#     def forward(self, x):
-#         # input (x): [batch_size, 3, 128, 128]
-#         # output: [batch_size, 11]
-
-#         # Extract features by convolutional layers.
-#         x1 = self.cnn_layer1(x)
-        
-#         x1 = self.relu(x1)
-        
-#         x2 = self.cnn_layer2(x1)
-        
-#         x2 = self.relu(x2)
-        
-#         x3 = self.cnn_layer3(x2)
-        
-#         x3 = self.relu(x3)
-        
-#         x4 = self.cnn_layer4(x3)
-        
-#         x4 = self.relu(x4)
-        
-#         x5 = self.cnn_layer5(x4)
-        
-#         x5 = self.relu(x5)
-        
-#         x6 = self.cnn_layer6(x5)
-        
-#         x6 = self.relu(x6)
-        
-#         # The extracted feature map must be flatten before going to fully-connected layers.
-#         xout = x6.flatten(1)
-
-#         # The features are transformed by fully-connected layers to obtain the final logits.
-#         xout = self.fc_layer(xout)
-#         return xout
