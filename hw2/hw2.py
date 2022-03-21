@@ -111,6 +111,7 @@ import torch
 from torch.utils.data import Dataset
 from torch.utils.data import DataLoader
 
+
 class LibriDataset(Dataset):
     def __init__(self, X, y=None):
         self.data = X
@@ -139,27 +140,37 @@ class BasicBlock(nn.Module):
         super(BasicBlock, self).__init__()
 
         self.block = nn.Sequential(
-            nn.Linear(input_dim, 2048),
+            nn.Linear(input_dim, 2048), # 1
+            nn.SiLU(),          
+            nn.BatchNorm1d(2048),
+            nn.Dropout(0.5),
+
+            nn.Linear(2048, 2048), # 2
             nn.SiLU(),
             nn.BatchNorm1d(2048),
-            nn.Dropout(0.75),
+            nn.Dropout(0.5),
 
-            nn.Linear(2048, 1024),
+            nn.Linear(2048, 2048), # 2
+            nn.SiLU(),
+            nn.BatchNorm1d(2048),
+            nn.Dropout(0.5),
+
+            nn.Linear(2048,1024), # 3
             nn.SiLU(),
             nn.BatchNorm1d(1024),
-            nn.Dropout(0.75),
+            nn.Dropout(0.5),
+
+            nn.Linear(1024, 512), # 4
+            nn.SiLU(),          
+            nn.BatchNorm1d(512),
+            nn.Dropout(0.5),
+
+            nn.Linear(512, 256), # 5
+            nn.SiLU(),
+            nn.BatchNorm1d(256),
+            nn.Dropout(0.5),
             
-            # nn.Linear(1024, 512),
-            # nn.SiLU(),
-            # nn.BatchNorm1d(512),
-            # nn.Dropout(0.3),
-
-            # nn.Linear(512, 256),
-            # nn.SiLU(),
-            # nn.BatchNorm1d(256),
-            # nn.Dropout(0.3),
-
-            nn.Linear(1024, output_dim),
+            nn.Linear(256, output_dim),
         )
 
     def forward(self, x):
@@ -167,13 +178,57 @@ class BasicBlock(nn.Module):
         return x
 
 
+# class LSTM(nn.Module):
+#     def __init__(self,input_size, hidden_size=256, num_layers=5, output_dim=41):
+#         super(LSTM, self).__init__()
+#         self.lstm = nn.LSTM(
+#             input_size = input_size,
+#             hidden_size = hidden_size,
+#             num_layers = num_layers,
+#             batch_first = True,
+            
+#         )
+#         #self.linear1 = nn.Linear(hidden_size, output_dim)
+#         self.fc = nn.Sequential(
+#             nn.Linear(hidden_size, 2048),
+#             nn.SiLU(),
+#             nn.BatchNorm1d(2048),
+#             nn.Dropout(0.3),
+
+#             nn.Linear(2048, 1024),
+#             nn.SiLU(),
+#             nn.BatchNorm1d(1024),
+#             nn.Dropout(0.3),
+
+#             nn.Linear(1024, output_dim),
+            
+#             )
+        
+
+#     def forward(self, inputs):
+#         inputs = inputs.unsqueeze(0)
+
+#         # hidden_size=1700, num_layers=2, batch_size = 1
+#         hs = (torch.zeros(2, 1, 1700, device = inputs.device),
+#                 torch.zeros(2, 1, 1700, device = inputs.device))
+
+#         out, (h_n, c_n) = self.lstm(inputs, hs)
+
+#         inputs = inputs.reshape(-1, 2)
+#         outputs = self.fc(out[-1])
+               
+#         #outputs = self.linear1(out[-1])
+#         return outputs
+#         #return outputs
+
+
 class Classifier(nn.Module):
-    def __init__(self, input_dim, output_dim=41, hidden_layers=1, hidden_dim=256):
+    def __init__(self, input_dim, output_dim=41, hidden_layers=5, hidden_dim=256):
         super(Classifier, self).__init__()
 
         self.fc = nn.Sequential(
             BasicBlock(input_dim, hidden_dim),
-            # 讓 list 變成獨立的 argument f(x) x= [1,2,3]  fx =f(1, 2, 3)
+            # # 讓 list 變成獨立的 argument f(x) x= [1,2,3]  fx =f(1, 2, 3)
             *[BasicBlock(hidden_dim, hidden_dim) for _ in range(hidden_layers)],
             nn.Linear(hidden_dim, output_dim)
         )
@@ -227,15 +282,15 @@ train_ratio = 0.8               # the ratio of data used for training, the rest 
 
 # training parameters
 seed = 91322                       # random seed
-batch_size = 1024                # batch size
-num_epoch = 100                   # the number of training epoch
-learning_rate = 0.0001          # learning rate
+batch_size = 256                # batch size
+num_epoch = 200                  # the number of training epoch
+learning_rate = 1e-4          # learning rate
 model_path = './model.ckpt'     # the path where the checkpoint will be saved
 
 # model parameters
 input_dim = 39 * concat_nframes # the input dim of the model, you should not change the value
 hidden_layers = 2               # the number of hidden layers
-hidden_dim = 1700                # the hidden dim
+hidden_dim = 1700               # the hidden dim
 
 """## Prepare dataset and model"""
 
@@ -276,7 +331,8 @@ def same_seeds(seed):
 same_seeds(seed)
 
 # create model, define a loss function, and optimizer
-model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=hidden_dim).to(device)
+model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=hidden_dim,).to(device)
+# model = LSTM(input_size=input_dim, num_layers=hidden_layers, hidden_size=hidden_dim,).to(device)
 #criterion = FocalLoss()
 criterion = nn.CrossEntropyLoss()
 #optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)
@@ -291,7 +347,7 @@ for epoch in range(num_epoch):
     val_loss = 0.0
     
     if epoch == 0:
-        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=0.05)
+        optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=1e-4)
     elif epoch == 50:
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
 
@@ -362,7 +418,9 @@ test_set = LibriDataset(test_X, None)
 test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False)
 
 # load model
-model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=hidden_dim).to(device)
+# model = Classifier(input_dim=input_dim, hidden_layers=hidden_layers, hidden_dim=hidden_dim).to(device)
+model = LSTM(input_size=input_dim, num_layers=hidden_layers, hidden_size=hidden_dim,).to(device)
+
 model.load_state_dict(torch.load(model_path))
 
 """Make prediction."""

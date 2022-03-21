@@ -17,7 +17,7 @@ Notes: if the links are dead, you can download the data directly from Kaggle and
 
 """# Training"""
 
-_exp_name = "sample"
+_exp_name = "model02"
 
 # Import necessary packages.
 import numpy as np
@@ -61,10 +61,6 @@ test_tfm = transforms.Compose([
     # ToTensor() should be the last one of the transforms.
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    # transforms.Resize((128, 128)),
-    # # You may add some transforms here.
-    # # ToTensor() should be the last one of the transforms.
-    # transforms.ToTensor(),
 ])
 
 # However, it is also possible to use augmentation in the testing phase.
@@ -77,12 +73,6 @@ train_tfm = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor(),
     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-
-    # transforms.Resize((128, 128)),
-    # # You may add some transforms here.
-    # # ToTensor() should be the last one of the transforms.
-    # transforms.ToTensor(),
-
 ])
 
 """## **Datasets**
@@ -123,36 +113,37 @@ class Classifier(nn.Module):
         self.cnn = nn.Sequential(
             # 3 * 224 * 224 -> 64 * 111 * 111
             nn.Conv2d(3, 32, 3, padding=1),
-            nn.BatchNorm2d(32),
             nn.SiLU(),
+            nn.BatchNorm2d(32),
+            
 
             nn.Conv2d(32, 64, 3),
-            nn.BatchNorm2d(64),
             nn.SiLU(),
+            nn.BatchNorm2d(64),
             nn.MaxPool2d(kernel_size=2),
 
             # 64 * 111 * 111 -> 128 * 54 * 54
             nn.Conv2d(64, 128, 3),
-            nn.BatchNorm2d(128),
             nn.SiLU(),
+            nn.BatchNorm2d(128),
             nn.MaxPool2d(kernel_size=2),
 
             # 128 * 54 * 54 -> 256 * 26 * 26
             nn.Conv2d(128, 256, 3),
-            nn.BatchNorm2d(256),
             nn.SiLU(),
+            nn.BatchNorm2d(256),
             nn.MaxPool2d(kernel_size=2),
 
             # 256 * 26 * 26  -> 256 * 12 * 12
             nn.Conv2d(256, 256, 3),
-            nn.BatchNorm2d(256),
             nn.SiLU(),
+            nn.BatchNorm2d(256),
             nn.MaxPool2d(kernel_size=2),
 
             # 256 * 12 * 12  -> 512 * 5 * 5
             nn.Conv2d(256, 512, 3),
-            nn.BatchNorm2d(512),
             nn.SiLU(),
+            nn.BatchNorm2d(512),
             nn.MaxPool2d(kernel_size=2),
         )
         self.fc = nn.Sequential(
@@ -164,45 +155,9 @@ class Classifier(nn.Module):
 
         )
 
-        self.testcnn = nn.Sequential(
-            nn.Conv2d(3, 64, 3, 1, 1),  # [64, 128, 128]
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2, 0),      # [64, 64, 64]
-
-            nn.Conv2d(64, 128, 3, 1, 1), # [128, 64, 64]
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2, 0),      # [128, 32, 32]
-
-            nn.Conv2d(128, 256, 3, 1, 1), # [256, 32, 32]
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2, 0),      # [256, 16, 16]
-
-            nn.Conv2d(256, 512, 3, 1, 1), # [512, 16, 16]
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2, 0),       # [512, 8, 8]
-            
-            nn.Conv2d(512, 512, 3, 1, 1), # [512, 8, 8]
-            nn.BatchNorm2d(512),
-            nn.ReLU(),
-            nn.MaxPool2d(2, 2, 0),       # [512, 4, 4]
-        )
-
-        self.testfc = nn.Sequential(
-            nn.Linear(512*4*4, 1024),
-            nn.ReLU(),
-            nn.Linear(1024, 512),
-            nn.ReLU(),
-            nn.Linear(512, 11)
-        )
     def forward(self, x):
         out = self.cnn(x)
-        # out = self.testcnn(x)
         out = out.view(out.size()[0], -1)
-        # return self.testfc(out)
         return self.fc(out)
 # FocalLoss
 import torch.nn.functional as F
@@ -369,7 +324,7 @@ valid_set = FoodDataset(os.path.join(_dataset_dir,"validation"), tfm=test_tfm)
 #valid_loader = DataLoader(valid_set, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True)
 
 k_folds = 5
-n_epochs = 150
+n_epochs = 80
 patience = 300 # If no improvement in 'patience' epochs, early stop
 
 dataset = ConcatDataset([train_set, valid_set])
@@ -389,15 +344,14 @@ model = Classifier().to(device)
 summary(model,(3, 224, 224))
 
 # For the classification task, we use cross-entropy as the measurement of performance.
-# criterion = nn.CrossEntropyLoss()
 criterion = FocalLoss()
 
 # Initialize optimizer, you may fine-tune some hyperparameters such as learning rate on your own.
-optimizer = torch.optim.Adam(model.parameters(), lr=0.0003, weight_decay=1e-5) 
 
 # Initialize trackers, these are not parameters and should not be changed
 stale = 0
 best_acc = 0
+best_loss = 0
 
 for fold, (train_id, test_id) in enumerate(kfold.split(dataset)):
     # Print
@@ -415,6 +369,10 @@ for fold, (train_id, test_id) in enumerate(kfold.split(dataset)):
         # ---------- Training ----------
         # Make sure the model is in train mode before training.
         model.train()
+        if epoch == 0:
+            optimizer = torch.optim.AdamW(model.parameters(), lr=0.0003, weight_decay=1e-5)
+        elif epoch == 50:
+            optimizer = torch.optim.SGD(model.parameters(), lr=0.0003, momentum=0.9, weight_decay=1e-5)
 
         # These are used to record information in training.
         train_loss = []
@@ -507,10 +465,10 @@ for fold, (train_id, test_id) in enumerate(kfold.split(dataset)):
         # update logs
         if valid_acc > best_acc:
             with open(f"./{_exp_name}_log.txt","a"):
-                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> best")
+                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f} -> new best")
         else:
             with open(f"./{_exp_name}_log.txt","a"):
-                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {valid_loss:.5f}, acc = {valid_acc:.5f}")
+                print(f"[ Valid | {epoch + 1:03d}/{n_epochs:03d} ] loss = {best_loss:.5f}, acc = {best_acc:.5f} -> now best")
 
 
         # save models
@@ -518,6 +476,7 @@ for fold, (train_id, test_id) in enumerate(kfold.split(dataset)):
             print(f"Best model found at epoch {epoch}, saving model")
             torch.save(model.state_dict(), f"{_exp_name}_best.ckpt") # only save best to prevent output memory exceed error
             best_acc = valid_acc
+            best_loss = valid_loss
             stale = 0
         else:
             stale += 1
@@ -566,4 +525,28 @@ def pad4(i):
 df = pd.DataFrame()
 df["Id"] = [pad4(i) for i in range(1,len(test_set)+1)]
 df["Category"] = prediction
-df.to_csv("submission.csv",index = False)
+df.to_csv("model02.csv",index = False)
+
+# tmux 02
+
+# Score: 0.89143
+
+#Average: 0.37225496768951416 %
+# Fold 2: 0.9640217423439026 %
+# Average: 0.5650593638420105 %
+# Fold 3: 0.97081458568573 %
+# Average: 0.7592222094535828 %
+# Fold 4: 0.97682785987854 %
+# Average: 0.9545877575874329 %
+# --------------------------------
+# valid
+# Fold 0: 0.8072916865348816 %
+# Average: 1.1160460710525513 %
+# Fold 1: 0.9014136791229248 %
+# Average: 1.2963287830352783 %
+# Fold 2: 0.9568452835083008 %
+# Average: 1.4876978397369385 %
+# Fold 3: 0.9698660969734192 %
+# Average: 1.6816710233688354 %
+# Fold 4: 0.984747052192688 %
+# Average: 1.8786203861236572 %
