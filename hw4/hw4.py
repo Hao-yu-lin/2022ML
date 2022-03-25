@@ -192,18 +192,15 @@ from CF import Conformer
 
 
 class Classifier(nn.Module):
-	def __init__(self,config, d_model=80, n_spks=600, dropout=0.1):
+	def __init__(self, config, d_model=60, n_spks=600, dropout=0.1):
 		super().__init__()
 		# Project the dimension of features from that of input into d_model.
 		self.prenet = nn.Linear(40, d_model)
-		# TODO:
-		#   Change Transformer to Conformer.
-		#   https://arxiv.org/abs/2005.08100
-		# self.encoder_layer = nn.TransformerEncoderLayer(
-		# 	d_model=d_model, dim_feedforward=256, nhead=2
-		# )
+		
 		self.encoder_layer = Conformer(**config)
-		# self.encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=2)
+
+		#encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=3)
+
 
 		# Project the the dimension of features from d_model into speaker nums.
 		self.pred_layer = nn.Sequential(
@@ -227,6 +224,7 @@ class Classifier(nn.Module):
 		out = self.encoder_layer(out)
 		out = self.encoder_layer(out)
 		out = self.encoder_layer(out)
+
 
 		# out: (batch size, length, d_model)
 		#out = out.transpose(0, 1)
@@ -370,40 +368,40 @@ def train_parse_args():
 		"valid_steps": 2000,
 		"warmup_steps": 1000,
 		"save_steps": 10000,
-		"total_steps": 300000,
+		"total_steps": 200000,
 		"model_config":{
             "config1":{
-                "d_model":80,
+                "d_model":60,
                 "ff1_hsize": 2048,
-                "ff1_dropout": 0.2,
+                "ff1_dropout": 0.1,
                 "n_head": 2,
-                "mha_dropout": 0.2,
+                "mha_dropout": 0.1,
                 "kernel_size": 3,
-                "conv_dropout": 0.2,
+                "conv_dropout": 0.1,
                 "ff2_hsize": 2048,
-                "ff2_dropout": 0.2
+                "ff2_dropout": 0.1
             },
             "config2":{
-                "d_model":80,
+                "d_model":60,
                 "ff1_hsize": 2048,
-                "ff1_dropout": 0.2,
+                "ff1_dropout": 0.1,
                 "n_head": 4,
-                "mha_dropout": 0.2,
+                "mha_dropout": 0.1,
                 "kernel_size": 3,
-                "conv_dropout": 0.2,
+                "conv_dropout": 0.1,
                 "ff2_hsize": 2048,
-                "ff2_dropout": 0.2
+                "ff2_dropout": 0.1
             },
             "config3":{
-                "d_model":80,
-                "ff1_hsize": 4096,
-                "ff1_dropout": 0.2,
-                "n_head": 2,
-                "mha_dropout": 0.2,
+                "d_model":60,
+                "ff1_hsize": 1024,
+                "ff1_dropout": 0.1,
+                "n_head": 4,
+                "mha_dropout": 0.1,
                 "kernel_size": 3,
-                "conv_dropout": 0.2,
-                "ff2_hsize": 4096,
-                "ff2_dropout": 0.2
+                "conv_dropout": 0.1,
+                "ff2_hsize": 1024,
+                "ff2_dropout": 0.1
             },
         },
         "model_path": {
@@ -413,6 +411,8 @@ def train_parse_args():
 	}
 
 	return config
+
+results_valid = {}
 
 
 def main(
@@ -483,6 +483,7 @@ def main(
 				# keep the best model
 				if valid_accuracy > best_accuracy:
 					best_accuracy = valid_accuracy
+					results_valid[i] = best_accuracy
 					best_state_dict = model.state_dict()
 
 				pbar = tqdm(total=valid_steps, ncols=0, desc="Train", unit=" step")
@@ -497,6 +498,12 @@ def main(
 
 if __name__ == "__main__":
 	main(**train_parse_args())
+
+
+
+for key, value in results_valid.items():
+	print(f'model {key}: accuracy = {value} %')
+
 
 time_end = time.time()
 time_c = time_end - time_start
