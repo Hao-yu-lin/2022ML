@@ -21,9 +21,15 @@ Original file is located at
 
 """## Fix Random Seed"""
 
+
+from re import S
 import numpy as np
+from sklearn.preprocessing import LabelEncoder
 import torch
 import random
+import time
+
+time_start = time.time()
 
 def set_seed(seed):
     np.random.seed(seed)
@@ -35,7 +41,7 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-set_seed(87)
+set_seed(9103222)
 
 """# Data
 ## Dataset
@@ -188,10 +194,12 @@ import sys
 # from CF import Conformer
 import torchaudio
 
+from torchsummary import summary
 
 
 
-import torchaudio
+
+
 
 class Classifier(nn.Module):
 	def __init__(self, 
@@ -208,12 +216,6 @@ class Classifier(nn.Module):
 		# Project the dimension of features from that of input into d_model.
 		self.prenet = nn.Linear(40, d_model)
 
-		self.softmax = nn.Softmax(dim = 1)
-
-		self.weight = nn.Parameter(torch.rand(1, d_model))
-
-		#self.norm = nn.BatchNorm1d(d_model)
-
 		self.encoder_conformer = torchaudio.models.Conformer(input_dim = d_model, 
 											num_heads = num_heads,
 											ffn_dim = ffn_dim,
@@ -221,13 +223,15 @@ class Classifier(nn.Module):
 											depthwise_conv_kernel_size = depthwise_conv_kernel_size,
 											dropout = dropout)
 
-		self.fc = nn.Linear(d_model, n_spks, bias = False)
-
+		# self attention pooling
+		self.softmax = nn.Softmax(dim = 1)
+		self.weight = nn.Parameter(torch.rand(1, d_model))
+		self.fc = nn.Linear(d_model, n_spks, bias = False).cuda()
 		self.s = s
 		self.m = m
 
 
-	def forward(self, mels):
+	def forward(self, mels, labels = None):
 		"""
 		args:
 			mels: (batch size, length, 40)
@@ -236,7 +240,6 @@ class Classifier(nn.Module):
 		"""
 		# out: (batch size, length, d_model)
 		out = self.prenet(mels)
-
 		lens = torch.tensor([out.size(1)] * out.size(0)).cuda()
 		# out
 		out, _lens = self.encoder_conformer(out, lens)
@@ -247,11 +250,28 @@ class Classifier(nn.Module):
 		weight = self.softmax(weight)
 		stats = (weight @ out).squeeze(1)	# stats: (batch size, length)
 
-		stats = out.mean(dim=1)
+        # https://github.com/ppriyank/Pytorch-Additive_Margin_Softmax_for_Face_Verification/blob/master/AM_Softmax.py
+		stats = F.normalize(stats, p = 2, dim = 1)
+		with torch.no_grad():
+			self.fc.weight.div_(torch.norm(self.fc.weight, dim = 1, keepdim=True))
+		
+        # session 2 把 pred 刪掉
+		wf = self.fc(stats)
+		b = wf.size(0)
 
-		out = self.fc(stats)
-	
-		return out
+		for i in range(b):
+			wf[i][labels[i]] = wf[i][labels[i]] - self.m
+			
+		weighted_wf = self.s * wf
+
+		return weighted_wf
+
+		
+		
+
+
+		
+
 
 """# Learning rate schedule
 - For transformer architecture, the design of learning rate schedule is different from that of CNN.
@@ -322,7 +342,7 @@ def model_fn(batch, model, criterion, device):
 	mels = mels.to(device)
 	labels = labels.to(device)
 
-	outs = model(mels)
+	outs = model(mels, labels = labels)
 
 	loss = criterion(outs, labels)
 
@@ -333,9 +353,38 @@ def model_fn(batch, model, criterion, device):
 
 	return loss, accuracy
 
+"""# Validate
+- Calculate accuracy of the validation set.
+"""
+
+from tqdm import tqdm
+import torch
 
 
+def valid(dataloader, model, criterion, device): 
+	"""Validate on validation set."""
 
+	model.eval()
+	running_loss = 0.0
+	running_accuracy = 0.0
+	pbar = tqdm(total=len(dataloader.dataset), ncols=0, desc="Valid", unit=" uttr")
+
+	for i, batch in enumerate(dataloader):
+		with torch.no_grad():
+			loss, accuracy = model_fn(batch, model, criterion, device)
+			running_loss += loss.item()
+			running_accuracy += accuracy.item()
+
+		pbar.update(dataloader.batch_size)
+		pbar.set_postfix(
+			loss=f"{running_loss / (i+1):.2f}",
+			accuracy=f"{running_accuracy / (i+1):.2f}",
+		)
+
+	pbar.close()
+	model.train()
+
+	return running_accuracy / len(dataloader)
 
 """# Main function"""
 
@@ -347,61 +396,16 @@ from torch.optim import AdamW
 from torch.utils.data import DataLoader, random_split
 
 
-"""# Inference
-## Dataset of inference
-"""
-
-import os
-import json
-import torch
-from pathlib import Path
-from torch.utils.data import Dataset
-import pandas as pd
-
-
-class InferenceDataset(Dataset):
-	def __init__(self, data_dir):
-		testdata_path = Path(data_dir) / "testdata.json"
-		metadata = json.load(testdata_path.open())
-		self.data_dir = data_dir
-		self.data = metadata["utterances"]
-
-	def __len__(self):
-		return len(self.data)
-
-	def __getitem__(self, index):
-		utterance = self.data[index]
-		feat_path = utterance["feature_path"]
-		mel = torch.load(os.path.join(self.data_dir, feat_path))
-
-		return feat_path, mel
-
-
-def inference_collate_batch(batch):
-	"""Collate a batch of data."""
-	feat_paths, mels = zip(*batch)
-
-	return feat_paths, torch.stack(mels)
-
-"""## Main funcrion of Inference"""
-
-import json
-import csv
-from pathlib import Path
-from tqdm.notebook import tqdm
-
-import torch
-from torch.utils.data import DataLoader
-
-def test_parse_args():
+def train_parse_args():
 	"""arguments"""
 	config = {
 		"data_dir": "./Dataset",
-		"model_path": {
-			"model1":"./model01_1.ckpt",
-			"model2":"./model01_2.ckpt",
-			"model3":"./model01_3.ckpt"},
-		"output_path": "./model.csv",
+		"batch_size": 32,
+		"n_workers": 8,
+		"valid_steps": 2000,
+		"warmup_steps": 1000,
+		"save_steps": 10000,
+		"total_steps": 200000,
 		"model_config":{
             "config1":{
                 "d_model":80,
@@ -434,101 +438,111 @@ def test_parse_args():
 				"m":1e-4
 				
             },
-		}
+        },
+        "model_path": {
+            "config1":"./model03_1.ckpt",
+            "config2":"./model03_2.ckpt",
+            "config3":"./model03_3.ckpt"},
 	}
 
 	return config
 
-
-def test_main(data_dir,model_path,output_path,model_config):
-
-    """Main function."""
-
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"[Info]: Use {device} now!")
-
-    mapping_path = Path(data_dir) / "mapping.json"
-    mapping = json.load(mapping_path.open())
-
-    dataset = InferenceDataset(data_dir)
-
-    dataloader = DataLoader(
-        dataset,
-        batch_size=1,
-        shuffle=False,
-        drop_last=False,
-        num_workers=8,
-        collate_fn=inference_collate_batch,
-    )
-    print(f"[Info]: Finish loading data!",flush = True)
-
-    speaker_num = len(mapping["id2speaker"])
-    model1 = Classifier(**model_config["config1"], n_spks=speaker_num).to(device)
-    model1.load_state_dict(torch.load(model_path['model1']))
-    model1.eval()
-    model2 = Classifier(**model_config["config2"], n_spks=speaker_num).to(device)
-    model2.load_state_dict(torch.load(model_path['model2']))
-    model2.eval()
-    model3 = Classifier(**model_config["config3"], n_spks=speaker_num).to(device)
-    model3.load_state_dict(torch.load(model_path['model3']))
-    model3.eval()
-    print(f"[Info]: Finish creating model!",flush = True)
-
-    results = [["Id", "Category"]]
-    for feat_paths, mels in tqdm(dataloader):
-        with torch.no_grad():
-            mels = mels.to(device)
-            outs1 = model1(mels)
-            outs2 = model2(mels)
-            outs3 = model3(mels)
-            outs = (outs1+outs2+outs3) / 3
-            preds = outs.argmax(1).cpu().numpy()
-            for feat_path, pred in zip(feat_paths, preds):
-                results.append([feat_path, mapping["id2speaker"][str(pred)]])
-
-    with open(output_path, 'w', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerows(results)
-
-    # results1 = [["Id", "Category"]]
-    # results2 = [["Id", "Category"]]
-    # results3 = [["Id", "Category"]]
+results_valid = {}
 
 
-    # for feat_paths, mels in tqdm(dataloader):
-    #     with torch.no_grad():
-    #         mels = mels.to(device)
-    #         outs1 = model1(mels)
-    #         outs2 = model2(mels)
-    #         outs3 = model3(mels)
-    #         # outs = (outs1+outs2+outs3) / 3
-    #         preds1 = outs1.argmax(1).cpu().numpy()
-    #         preds2 = outs2.argmax(1).cpu().numpy()
-    #         preds3 = outs3.argmax(1).cpu().numpy()
+def main(
+	data_dir,
+	batch_size,
+	n_workers,
+	valid_steps,
+	warmup_steps,
+	total_steps,
+	save_steps,
+	model_path,
+	model_config,
+):
 
-    #         for feat_path, pred in zip(feat_paths, preds1):
-    #             results1.append([feat_path, mapping["id2speaker"][str(pred)]])
-    #         for feat_path, pred in zip(feat_paths, preds2):
-    #             results2.append([feat_path, mapping["id2speaker"][str(pred)]])
-    #         for feat_path, pred in zip(feat_paths, preds3):
-    #             results3.append([feat_path, mapping["id2speaker"][str(pred)]])
-    
-    # with open("./model01.csv", 'w', newline='') as csvfile:
-    #     writer = csv.writer(csvfile)
-    #     writer.writerows(results1)
+	for i in model_config:
+		"""Main function."""
+		device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+		print(f"[Info]: Use {device} now!")
 
-    # with open("./model02.csv", 'w', newline='') as csvfile:
-    #     writer = csv.writer(csvfile)
-    #     writer.writerows(results2)
+		train_loader, valid_loader, speaker_num = get_dataloader(data_dir, batch_size, n_workers)
+		train_iterator = iter(train_loader)
+		print(f"[Info]: Finish loading data!",flush = True)
 
-    # with open("./model03.csv", 'w', newline='') as csvfile:
-    #     writer = csv.writer(csvfile)
-    #     writer.writerows(results3)
+		model = Classifier(**model_config[i],n_spks=speaker_num).to(device)
+		criterion = nn.CrossEntropyLoss()
+		optimizer = AdamW(model.parameters(), lr=1e-4)
+		scheduler = get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps)
+		print(f"[Info]: Finish creating model!",flush = True)
 
+		best_accuracy = -1.0
+		best_state_dict = None
+
+		pbar = tqdm(total=valid_steps, ncols=0, desc="Train", unit=" step")
+
+		for step in range(total_steps):
+			# Get data
+			try:
+				batch = next(train_iterator)
+			except StopIteration:
+				train_iterator = iter(train_loader)
+				batch = next(train_iterator)
+
+			loss, accuracy = model_fn(batch, model, criterion, device)
+			batch_loss = loss.item()
+			batch_accuracy = accuracy.item()
+
+			# Updata model
+			loss.backward()
+			optimizer.step()
+			scheduler.step()
+			optimizer.zero_grad()
+
+			# Log
+			pbar.update()
+			pbar.set_postfix(
+				loss=f"{batch_loss:.2f}",
+				accuracy=f"{batch_accuracy:.2f}",
+				step=step + 1,
+			)
+
+			# Do validation
+			if (step + 1) % valid_steps == 0:
+				pbar.close()
+
+				valid_accuracy = valid(valid_loader, model, criterion, device)
+
+				# keep the best model
+				if valid_accuracy > best_accuracy:
+					best_accuracy = valid_accuracy
+					results_valid[i] = best_accuracy
+					best_state_dict = model.state_dict()
+
+				pbar = tqdm(total=valid_steps, ncols=0, desc="Train", unit=" step")
+
+			# Save the best model so far.
+			if (step + 1) % save_steps == 0 and best_state_dict is not None:
+				torch.save(best_state_dict, model_path[i])
+				pbar.write(f"Step {step + 1}, best model saved. (accuracy={best_accuracy:.4f})")
+
+		pbar.close()
 
 
 if __name__ == "__main__":
-	test_main(**test_parse_args())
+	main(**train_parse_args())
 
 
 
+
+for key, value in results_valid.items():
+	print(f'model {key}: accuracy = {value} %')
+
+
+time_end = time.time()
+time_c = time_end - time_start
+
+minutes, seconds = divmod(time_c, 60)
+hours, minutes = divmod(minutes, 60)
+print("time: %02d:%02d:%02d"%(hours,minutes,seconds))

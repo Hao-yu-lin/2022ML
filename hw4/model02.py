@@ -21,7 +21,10 @@ Original file is located at
 
 """## Fix Random Seed"""
 
+
+from re import S
 import numpy as np
+from sklearn.preprocessing import LabelEncoder
 import torch
 import random
 import time
@@ -38,7 +41,7 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
 
-set_seed(87)
+set_seed(9103222)
 
 """# Data
 ## Dataset
@@ -187,29 +190,51 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import sys
-sys.path.append('./Conformer')
-from CF import Conformer
+# sys.path.append('./Conformer')
+# from CF import Conformer
+import torchaudio
+
+from torchsummary import summary
+
+
+
+
 
 
 class Classifier(nn.Module):
-	def __init__(self, config, d_model=60, n_spks=600, dropout=0.1):
+	def __init__(self, 
+				d_model=80, 
+				num_heads = 5, 
+				ffn_dim = 2048,
+				num_layers = 3, 
+				depthwise_conv_kernel_size = 3, 
+				n_spks=600, 
+				dropout=0.1, 
+				s = 30.0, 
+				m = 0.4):
 		super().__init__()
 		# Project the dimension of features from that of input into d_model.
 		self.prenet = nn.Linear(40, d_model)
-		
-		self.encoder_layer = Conformer(**config)
 
-		#encoder = nn.TransformerEncoder(self.encoder_layer, num_layers=3)
+		self.encoder_conformer = torchaudio.models.Conformer(input_dim = d_model, 
+											num_heads = num_heads,
+											ffn_dim = ffn_dim,
+											num_layers = num_layers,
+											depthwise_conv_kernel_size = depthwise_conv_kernel_size,
+											dropout = dropout)
+
+		# self attention pooling
+		self.softmax = nn.Softmax(dim = 1)
+
+		self.weight = nn.Parameter(torch.rand(1, d_model))
+
+		self.fc = nn.Linear(d_model, n_spks, bias = False).cuda()
+
+		self.s = s
+		self.m = m
 
 
-		# Project the the dimension of features from d_model into speaker nums.
-		self.pred_layer = nn.Sequential(
-			# nn.Linear(d_model, d_model),
-			# nn.SiLU(),
-			nn.Linear(d_model, n_spks),
-		)
-
-	def forward(self, mels):
+	def forward(self, mels, labels = None, predict = False):
 		"""
 		args:
 			mels: (batch size, length, 40)
@@ -218,22 +243,44 @@ class Classifier(nn.Module):
 		"""
 		# out: (batch size, length, d_model)
 		out = self.prenet(mels)
-		# out: (length, batch size, d_model)
-		#out = out.permute(1, 0, 2)
-		# The encoder layer expect features in the shape of (length, batch size, d_model).
-		out = self.encoder_layer(out)
-		out = self.encoder_layer(out)
-		out = self.encoder_layer(out)
+
+		lens = torch.tensor([out.size(1)] * out.size(0)).cuda()
+		# out
+		out, _lens = self.encoder_conformer(out, lens)
+		
+		# self attention pooling
+		# 1 * d_model 
+		weight = self.weight @ out.permute(0, 2, 1)		#out: (batch size, d_model, length)
+		weight = self.softmax(weight)
+		stats = (weight @ out).squeeze(1)	# stats: (batch size, length)
+
+		stats = F.normalize(stats, p = 2, dim = 1)
+		
+
+		with torch.no_grad():
+			self.fc.weight.div_(torch.norm(self.fc.weight, dim = 1, keepdim=True))
+		
+		wf = self.fc(stats)
+
+		# session 3
+		if predict:
+			return wf
+	
+		b = wf.size(0)
+
+		for i in range(b):
+			wf[i][labels[i]] = wf[i][labels[i]] - self.m
+
+		weighted_wf = self.s * wf
+
+		return weighted_wf
+
+		
+		
 
 
-		# out: (batch size, length, d_model)
-		#out = out.transpose(0, 1)
-		# mean pooling
-		stats = out.mean(dim=1)
+		
 
-		# out: (batch, n_spks)
-		out = self.pred_layer(stats)
-		return out
 
 """# Learning rate schedule
 - For transformer architecture, the design of learning rate schedule is different from that of CNN.
@@ -304,7 +351,7 @@ def model_fn(batch, model, criterion, device):
 	mels = mels.to(device)
 	labels = labels.to(device)
 
-	outs = model(mels)
+	outs = model(mels, labels = labels)
 
 	loss = criterion(outs, labels)
 
@@ -362,7 +409,6 @@ def train_parse_args():
 	"""arguments"""
 	config = {
 		"data_dir": "./Dataset",
-		"save_path": "model.ckpt",
 		"batch_size": 32,
 		"n_workers": 8,
 		"valid_steps": 2000,
@@ -371,43 +417,41 @@ def train_parse_args():
 		"total_steps": 200000,
 		"model_config":{
             "config1":{
-                "d_model":60,
-                "ff1_hsize": 2048,
-                "ff1_dropout": 0.1,
-                "n_head": 2,
-                "mha_dropout": 0.1,
-                "kernel_size": 3,
-                "conv_dropout": 0.1,
-                "ff2_hsize": 2048,
-                "ff2_dropout": 0.1
+                "d_model":80,
+                "num_heads":5,
+				"ffn_dim":2048,
+				"num_layers":3,
+				"depthwise_conv_kernel_size":3,
+				"dropout": 0.1,
+				"s": 15.0,
+				"m":1e-4
             },
             "config2":{
-                "d_model":60,
-                "ff1_hsize": 2048,
-                "ff1_dropout": 0.1,
-                "n_head": 4,
-                "mha_dropout": 0.1,
-                "kernel_size": 3,
-                "conv_dropout": 0.1,
-                "ff2_hsize": 2048,
-                "ff2_dropout": 0.1
+                "d_model":80,
+                "num_heads":5,
+				"ffn_dim":1024,
+				"num_layers":3,
+				"depthwise_conv_kernel_size":3,
+				"dropout": 0.1,
+				"s": 15.0,
+				"m":1e-4
             },
             "config3":{
-                "d_model":60,
-                "ff1_hsize": 1024,
-                "ff1_dropout": 0.1,
-                "n_head": 4,
-                "mha_dropout": 0.1,
-                "kernel_size": 3,
-                "conv_dropout": 0.1,
-                "ff2_hsize": 1024,
-                "ff2_dropout": 0.1
+                "d_model":80,
+                "num_heads":5,
+				"ffn_dim":512,
+				"num_layers":3,
+				"depthwise_conv_kernel_size":3,
+				"dropout": 0.1,
+				"s": 15.0,
+				"m":1e-4
+				
             },
         },
         "model_path": {
-            "config1":"./model1.ckpt",
-            "config2":"./model2.ckpt",
-            "config3":"./model3.ckpt"},
+            "config1":"./model02_1.ckpt",
+            "config2":"./model02_2.ckpt",
+            "config3":"./model02_3.ckpt"},
 	}
 
 	return config
@@ -417,7 +461,6 @@ results_valid = {}
 
 def main(
 	data_dir,
-	save_path,
 	batch_size,
 	n_workers,
 	valid_steps,
@@ -437,9 +480,9 @@ def main(
 		train_iterator = iter(train_loader)
 		print(f"[Info]: Finish loading data!",flush = True)
 
-		model = Classifier(model_config[i],n_spks=speaker_num).to(device)
+		model = Classifier(**model_config[i],n_spks=speaker_num).to(device)
 		criterion = nn.CrossEntropyLoss()
-		optimizer = AdamW(model.parameters(), lr=1e-3)
+		optimizer = AdamW(model.parameters(), lr=1e-4)
 		scheduler = get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps)
 		print(f"[Info]: Finish creating model!",flush = True)
 
@@ -498,6 +541,7 @@ def main(
 
 if __name__ == "__main__":
 	main(**train_parse_args())
+
 
 
 
