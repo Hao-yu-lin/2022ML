@@ -208,12 +208,6 @@ class Classifier(nn.Module):
 		# Project the dimension of features from that of input into d_model.
 		self.prenet = nn.Linear(40, d_model)
 
-		self.softmax = nn.Softmax(dim = 1)
-
-		self.weight = nn.Parameter(torch.rand(1, d_model))
-
-		#self.norm = nn.BatchNorm1d(d_model)
-
 		self.encoder_conformer = torchaudio.models.Conformer(input_dim = d_model, 
 											num_heads = num_heads,
 											ffn_dim = ffn_dim,
@@ -221,13 +215,15 @@ class Classifier(nn.Module):
 											depthwise_conv_kernel_size = depthwise_conv_kernel_size,
 											dropout = dropout)
 
-		self.fc = nn.Linear(d_model, n_spks, bias = False)
-
+		# self attention pooling
+		self.softmax = nn.Softmax(dim = 1)
+		self.weight = nn.Parameter(torch.rand(1, d_model))
+		self.fc = nn.Linear(d_model, n_spks, bias = False).cuda()
 		self.s = s
 		self.m = m
 
 
-	def forward(self, mels):
+	def forward(self, mels, labels = None, predict = False):
 		"""
 		args:
 			mels: (batch size, length, 40)
@@ -236,7 +232,6 @@ class Classifier(nn.Module):
 		"""
 		# out: (batch size, length, d_model)
 		out = self.prenet(mels)
-
 		lens = torch.tensor([out.size(1)] * out.size(0)).cuda()
 		# out
 		out, _lens = self.encoder_conformer(out, lens)
@@ -247,11 +242,26 @@ class Classifier(nn.Module):
 		weight = self.softmax(weight)
 		stats = (weight @ out).squeeze(1)	# stats: (batch size, length)
 
-		stats = out.mean(dim=1)
+        # https://github.com/ppriyank/Pytorch-Additive_Margin_Softmax_for_Face_Verification/blob/master/AM_Softmax.py
+		stats = F.normalize(stats, p = 2, dim = 1)
+		with torch.no_grad():
+			self.fc.weight.div_(torch.norm(self.fc.weight, dim = 1, keepdim=True))
+		wf = self.fc(stats)
 
-		out = self.fc(stats)
-	
-		return out
+		if predict:
+			return wf
+		
+		b = wf.size(0)
+
+		for i in range(b):
+			wf[i][labels[i]] = wf[i][labels[i]] - self.m
+			
+		weighted_wf = self.s * wf
+
+		return weighted_wf
+
+		
+		
 
 """# Learning rate schedule
 - For transformer architecture, the design of learning rate schedule is different from that of CNN.
@@ -322,7 +332,7 @@ def model_fn(batch, model, criterion, device):
 	mels = mels.to(device)
 	labels = labels.to(device)
 
-	outs = model(mels)
+	outs = model(mels, labels = labels)
 
 	loss = criterion(outs, labels)
 
@@ -398,10 +408,10 @@ def test_parse_args():
 	config = {
 		"data_dir": "./Dataset",
 		"model_path": {
-			"model1":"./model01_1.ckpt",
-			"model2":"./model01_2.ckpt",
-			"model3":"./model01_3.ckpt"},
-		"output_path": "./model.csv",
+			"model1":"./model02_1.ckpt",
+			"model2":"./model02_2.ckpt",
+			"model3":"./model02_3.ckpt"},
+		"output_path": "./model01.csv",
 		"model_config":{
             "config1":{
                 "d_model":80,
@@ -478,9 +488,9 @@ def test_main(data_dir,model_path,output_path,model_config):
     for feat_paths, mels in tqdm(dataloader):
         with torch.no_grad():
             mels = mels.to(device)
-            outs1 = model1(mels)
-            outs2 = model2(mels)
-            outs3 = model3(mels)
+            outs1 = model1(mels, predict = True)
+            outs2 = model2(mels, predict = True)
+            outs3 = model3(mels, predict = True)
             outs = (outs1+outs2+outs3) / 3
             preds = outs.argmax(1).cpu().numpy()
             for feat_path, pred in zip(feat_paths, preds):
