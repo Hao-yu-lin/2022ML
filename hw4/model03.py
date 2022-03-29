@@ -231,7 +231,7 @@ class Classifier(nn.Module):
 		self.m = m
 
 
-	def forward(self, mels, labels = None):
+	def forward(self, mels, labels = None, predict = False):
 		"""
 		args:
 			mels: (batch size, length, 40)
@@ -255,8 +255,11 @@ class Classifier(nn.Module):
 		with torch.no_grad():
 			self.fc.weight.div_(torch.norm(self.fc.weight, dim = 1, keepdim=True))
 		
-        # session 2 把 pred 刪掉
 		wf = self.fc(stats)
+
+		if predict:
+			return wf
+
 		b = wf.size(0)
 
 		for i in range(b):
@@ -408,7 +411,7 @@ def train_parse_args():
 		"total_steps": 200000,
 		"model_config":{
             "config1":{
-                "d_model":80,
+                "d_model":120,
                 "num_heads":5,
 				"ffn_dim":2048,
 				"num_layers":3,
@@ -418,9 +421,9 @@ def train_parse_args():
 				"m":1e-4
             },
             "config2":{
-                "d_model":80,
+                "d_model":100,
                 "num_heads":5,
-				"ffn_dim":1024,
+				"ffn_dim":4096,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
@@ -428,15 +431,15 @@ def train_parse_args():
 				"m":1e-4
             },
             "config3":{
-                "d_model":80,
-                "num_heads":5,
-				"ffn_dim":512,
-				"num_layers":3,
+                "d_model":100,
+                "num_heads":4,
+				"ffn_dim":256,
+				"num_layers":5,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
 				"s": 15.0,
 				"m":1e-4
-				
+			# 比較不同 ffn_dim 與 layer 準確度
             },
         },
         "model_path": {
@@ -473,7 +476,7 @@ def main(
 
 		model = Classifier(**model_config[i],n_spks=speaker_num).to(device)
 		criterion = nn.CrossEntropyLoss()
-		optimizer = AdamW(model.parameters(), lr=1e-4)
+		optimizer = AdamW(model.parameters(), lr=1e-4, weight_decay=1e-6)
 		scheduler = get_cosine_schedule_with_warmup(optimizer, warmup_steps, total_steps)
 		print(f"[Info]: Finish creating model!",flush = True)
 
@@ -546,3 +549,26 @@ time_c = time_end - time_start
 minutes, seconds = divmod(time_c, 60)
 hours, minutes = divmod(minutes, 60)
 print("time: %02d:%02d:%02d"%(hours,minutes,seconds))
+
+
+# model config1: accuracy = 0.8622881355932204 %
+#  "config1":{
+#                 "d_model":80,
+#                 "num_heads":5,
+# 				"ffn_dim":2048,
+# 				"num_layers":3,
+# 				"depthwise_conv_kernel_size":3,
+# 				"dropout": 0.1,
+# 				"s": 15.0,
+# 				"m":1e-4
+
+# model config3: accuracy = 0.8608757062146892 %
+            # "config3":{
+            #     "d_model":80,
+            #     "num_heads":4,
+			# 	"ffn_dim":2048,
+			# 	"num_layers":5,
+			# 	"depthwise_conv_kernel_size":3,
+			# 	"dropout": 0.1,
+			# 	"s": 15.0,
+			# 	"m":1e-4

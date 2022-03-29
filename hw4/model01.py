@@ -207,12 +207,6 @@ class Classifier(nn.Module):
 		# Project the dimension of features from that of input into d_model.
 		self.prenet = nn.Linear(40, d_model)
 
-		self.softmax = nn.Softmax(dim = 1)
-
-		self.weight = nn.Parameter(torch.rand(1, d_model))
-
-		#self.norm = nn.BatchNorm1d(d_model)
-
 		self.encoder_conformer = torchaudio.models.Conformer(input_dim = d_model, 
 											num_heads = num_heads,
 											ffn_dim = ffn_dim,
@@ -220,13 +214,18 @@ class Classifier(nn.Module):
 											depthwise_conv_kernel_size = depthwise_conv_kernel_size,
 											dropout = dropout)
 
-		self.fc = nn.Linear(d_model, n_spks, bias = False)
+		# self attention pooling
+		self.softmax = nn.Softmax(dim = 1)
+
+		self.weight = nn.Parameter(torch.rand(1, d_model))
+
+		self.fc = nn.Linear(d_model, n_spks, bias = False).cuda()
 
 		self.s = s
 		self.m = m
 
 
-	def forward(self, mels):
+	def forward(self, mels, labels = None, predict = False):
 		"""
 		args:
 			mels: (batch size, length, 40)
@@ -246,12 +245,27 @@ class Classifier(nn.Module):
 		weight = self.softmax(weight)
 		stats = (weight @ out).squeeze(1)	# stats: (batch size, length)
 
-		stats = out.mean(dim=1)
+		# https://github.com/ppriyank/Pytorch-Additive_Margin_Softmax_for_Face_Verification/blob/master/AM_Softmax.py
+		stats = F.normalize(stats, p = 2, dim = 1)
+		
 
-		out = self.fc(stats)
+		with torch.no_grad():
+			self.fc.weight.div_(torch.norm(self.fc.weight, dim = 1, keepdim=True))
+		
+		wf = self.fc(stats)
+
+		# session 1
+		if predict:
+			return wf
 	
-		return out
+		b = wf.size(0)
 
+		for i in range(b):
+			wf[i][labels[i]] = wf[i][labels[i]] - self.m
+
+		weighted_wf = self.s * wf
+
+		return weighted_wf
 
 
 """# Learning rate schedule
@@ -323,7 +337,7 @@ def model_fn(batch, model, criterion, device):
 	mels = mels.to(device)
 	labels = labels.to(device)
 
-	outs = model(mels)
+	outs = model(mels, labels = labels)
 
 	loss = criterion(outs, labels)
 
@@ -389,27 +403,7 @@ def train_parse_args():
 		"total_steps": 200000,
 		"model_config":{
             "config1":{
-                "d_model":80,
-                "num_heads":5,
-				"ffn_dim":2048,
-				"num_layers":3,
-				"depthwise_conv_kernel_size":3,
-				"dropout": 0.1,
-				"s": 15.0,
-				"m":1e-4
-            },
-            "config2":{
-                "d_model":80,
-                "num_heads":5,
-				"ffn_dim":1024,
-				"num_layers":3,
-				"depthwise_conv_kernel_size":3,
-				"dropout": 0.1,
-				"s": 15.0,
-				"m":1e-4
-            },
-            "config3":{
-                "d_model":80,
+                "d_model":100,
                 "num_heads":5,
 				"ffn_dim":512,
 				"num_layers":3,
@@ -417,7 +411,27 @@ def train_parse_args():
 				"dropout": 0.1,
 				"s": 15.0,
 				"m":1e-4
-				
+            },
+            "config2":{
+                "d_model":100,
+                "num_heads":5,
+				"ffn_dim":256,
+				"num_layers":3,
+				"depthwise_conv_kernel_size":3,
+				"dropout": 0.1,
+				"s": 15.0,
+				"m":1e-4
+            },
+            "config3":{
+                "d_model":100,
+                "num_heads":5,
+				"ffn_dim":128,
+				"num_layers":3,
+				"depthwise_conv_kernel_size":3,
+				"dropout": 0.3,
+				"s": 15.0,
+				"m":1e-4
+			# 調整 d_model and dropout
             },
         },
         "model_path": {
@@ -526,6 +540,28 @@ minutes, seconds = divmod(time_c, 60)
 hours, minutes = divmod(minutes, 60)
 print("time: %02d:%02d:%02d"%(hours,minutes,seconds))
 
+
+# conformer + self attention pooling
 # model config1: accuracy = 0.8478107344632768 %
-# model config2: accuracy = 0.8264477401129944 %
-# model config3: accuracy = 0.8176200564971752 %
+# "config1":{
+#                 "d_model":60,
+#                 "num_heads":2,
+# 				"ffn_dim":2048,
+# 				"num_layers":3,
+# 				"depthwise_conv_kernel_size":3,
+# 				"dropout": 0.1,
+# 				"s": 15.0,
+# 				"m":1e-4
+#             },
+
+# model config1: accuracy = 0.8866525423728814 %
+# 				"d_model":100,
+#                "num_heads":5,
+# 				"ffn_dim":2048,
+# 				"num_layers":3,
+# 				"depthwise_conv_kernel_size":3,
+# 				"dropout": 0.1,
+# 				"s": 15.0,
+# 				"m":1e-4
+# d_model up accuracy up
+# dropout up accuracy down

@@ -408,13 +408,14 @@ def test_parse_args():
 	config = {
 		"data_dir": "./Dataset",
 		"model_path": {
-			"model1":"./model02_1.ckpt",
-			"model2":"./model02_2.ckpt",
-			"model3":"./model02_3.ckpt"},
-		"output_path": "./model01.csv",
+			"model1":"./model01_88.ckpt",
+			"model2":"./model03_862.ckpt",
+			"model3":"./model03_860.ckpt",
+			},
+		"output_path": "./model01_88.csv",
 		"model_config":{
             "config1":{
-                "d_model":80,
+                "d_model":100,
                 "num_heads":5,
 				"ffn_dim":2048,
 				"num_layers":3,
@@ -426,7 +427,7 @@ def test_parse_args():
             "config2":{
                 "d_model":80,
                 "num_heads":5,
-				"ffn_dim":1024,
+				"ffn_dim":2048,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
@@ -435,9 +436,9 @@ def test_parse_args():
             },
             "config3":{
                 "d_model":80,
-                "num_heads":5,
-				"ffn_dim":512,
-				"num_layers":3,
+                "num_heads":4,
+				"ffn_dim":2048,
+				"num_layers":5,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
 				"s": 15.0,
@@ -476,12 +477,18 @@ def test_main(data_dir,model_path,output_path,model_config):
     model1 = Classifier(**model_config["config1"], n_spks=speaker_num).to(device)
     model1.load_state_dict(torch.load(model_path['model1']))
     model1.eval()
+
     model2 = Classifier(**model_config["config2"], n_spks=speaker_num).to(device)
     model2.load_state_dict(torch.load(model_path['model2']))
     model2.eval()
+
     model3 = Classifier(**model_config["config3"], n_spks=speaker_num).to(device)
     model3.load_state_dict(torch.load(model_path['model3']))
     model3.eval()
+
+
+
+	
     print(f"[Info]: Finish creating model!",flush = True)
 
     results = [["Id", "Category"]]
@@ -489,10 +496,11 @@ def test_main(data_dir,model_path,output_path,model_config):
         with torch.no_grad():
             mels = mels.to(device)
             outs1 = model1(mels, predict = True)
-            outs2 = model2(mels, predict = True)
-            outs3 = model3(mels, predict = True)
-            outs = (outs1+outs2+outs3) / 3
-            preds = outs.argmax(1).cpu().numpy()
+            # outs2 = model2(mels, predict = True)
+            # outs3 = model3(mels, predict = True)
+			
+            # outs = (outs1+outs2+outs3) / 3
+            preds = outs1.argmax(1).cpu().numpy()
             for feat_path, pred in zip(feat_paths, preds):
                 results.append([feat_path, mapping["id2speaker"][str(pred)]])
 

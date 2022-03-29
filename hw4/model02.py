@@ -417,35 +417,37 @@ def train_parse_args():
 		"total_steps": 200000,
 		"model_config":{
             "config1":{
-                "d_model":80,
+                "d_model":100,
+                "num_heads":5,
+				"ffn_dim":2048,
+				"num_layers":3,
+				"depthwise_conv_kernel_size":3,
+				"dropout": 0.1,
+				"s": 8,
+				"m": 1e-5
+            },
+            "config2":{
+                "d_model":100,
+                "num_heads":5,
+				"ffn_dim":2048,
+				"num_layers":3,
+				"depthwise_conv_kernel_size":3,
+				"dropout": 0.1,
+				"s": 8,
+				"m":1e-4
+            },
+            "config3":{
+                "d_model":100,
                 "num_heads":5,
 				"ffn_dim":2048,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
 				"s": 15.0,
-				"m":1e-4
-            },
-            "config2":{
-                "d_model":80,
-                "num_heads":5,
-				"ffn_dim":1024,
-				"num_layers":3,
-				"depthwise_conv_kernel_size":3,
-				"dropout": 0.1,
-				"s": 15.0,
-				"m":1e-4
-            },
-            "config3":{
-                "d_model":80,
-                "num_heads":5,
-				"ffn_dim":512,
-				"num_layers":3,
-				"depthwise_conv_kernel_size":3,
-				"dropout": 0.1,
-				"s": 15.0,
-				"m":1e-4
-				
+				"m":1e-5
+			# 調整 s 與 m
+			
+
             },
         },
         "model_path": {
@@ -555,3 +557,19 @@ time_c = time_end - time_start
 minutes, seconds = divmod(time_c, 60)
 hours, minutes = divmod(minutes, 60)
 print("time: %02d:%02d:%02d"%(hours,minutes,seconds))
+
+# Score: 0.79100
+# model config1: accuracy = 0.8555790960451978 %
+# "config1":{
+#                 "d_model":80,
+#                 "num_heads":5,
+# 				"ffn_dim":2048,
+# 				"num_layers":3,
+# 				"depthwise_conv_kernel_size":3,
+# 				"dropout": 0.1,
+# 				"s": 15.0,
+# 				"m":1e-4
+#             },
+# model config2: accuracy = 0.8343926553672316 %
+# model config3: accuracy = 0.8153248587570622 %
+# s 與 m 應該變小
