@@ -572,3 +572,26 @@ print("time: %02d:%02d:%02d"%(hours,minutes,seconds))
 			# 	"dropout": 0.1,
 			# 	"s": 15.0,
 			# 	"m":1e-4
+			
+# model config1: accuracy = 0.9043079096045198 %
+# "config1":{
+#                 "d_model":120,
+#                 "num_heads":5,
+# 				"ffn_dim":2048,
+# 				"num_layers":3,
+# 				"depthwise_conv_kernel_size":3,
+# 				"dropout": 0.1,
+# 				"s": 15.0,
+# 				"m":1e-4
+#             },
+# model config2: accuracy = 0.8961864406779662 %
+#             "config2":{
+#                 "d_model":100,
+#                 "num_heads":5,
+# 				"ffn_dim":4096,
+# 				"num_layers":3,
+# 				"depthwise_conv_kernel_size":3,
+# 				"dropout": 0.1,
+# 				"s": 15.0,
+# 				"m":1e-4
+#             },

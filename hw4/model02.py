@@ -573,3 +573,14 @@ print("time: %02d:%02d:%02d"%(hours,minutes,seconds))
 # model config2: accuracy = 0.8343926553672316 %
 # model config3: accuracy = 0.8153248587570622 %
 # s 與 m 應該變小
+
+# model config3: accuracy = 0.8806497175141242 %
+# "config3":{
+#                 "d_model":100,
+#                 "num_heads":5,
+# 				"ffn_dim":2048,
+# 				"num_layers":3,
+# 				"depthwise_conv_kernel_size":3,
+# 				"dropout": 0.1,
+# 				"s": 15.0,
+# 				"m":1e-5
