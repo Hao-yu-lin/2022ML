@@ -411,9 +411,9 @@ def train_parse_args():
 		"total_steps": 200000,
 		"model_config":{
             "config1":{
-                "d_model":120,
+                "d_model":200,
                 "num_heads":5,
-				"ffn_dim":2048,
+				"ffn_dim":4096,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
@@ -421,7 +421,7 @@ def train_parse_args():
 				"m":1e-4
             },
             "config2":{
-                "d_model":100,
+                "d_model":140,
                 "num_heads":5,
 				"ffn_dim":4096,
 				"num_layers":3,
@@ -433,13 +433,13 @@ def train_parse_args():
             "config3":{
                 "d_model":100,
                 "num_heads":4,
-				"ffn_dim":256,
+				"ffn_dim":2048,
 				"num_layers":5,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
 				"s": 15.0,
 				"m":1e-4
-			# 比較不同 ffn_dim 與 layer 準確度
+			
             },
         },
         "model_path": {
@@ -572,7 +572,7 @@ print("time: %02d:%02d:%02d"%(hours,minutes,seconds))
 			# 	"dropout": 0.1,
 			# 	"s": 15.0,
 			# 	"m":1e-4
-			
+
 # model config1: accuracy = 0.9043079096045198 %
 # "config1":{
 #                 "d_model":120,
@@ -595,3 +595,31 @@ print("time: %02d:%02d:%02d"%(hours,minutes,seconds))
 # 				"s": 15.0,
 # 				"m":1e-4
 #             },
+
+
+
+# "config1":{
+	# "d_model":200,
+	# "num_heads":5,
+	# "ffn_dim":4096,
+	# "num_layers":3,
+	# "depthwise_conv_kernel_size":3,
+	# "dropout": 0.1,
+	# "s": 15.0,
+	# "m":1e-4
+# },
+# model config1: accuracy = 0.9367937853107344 %
+
+
+# "config2":{
+# 	"d_model":140,
+# 	"num_heads":5,
+# 	"ffn_dim":4096,
+# 	"num_layers":3,
+# 	"depthwise_conv_kernel_size":3,
+# 	"dropout": 0.1,
+# 	"s": 15.0,
+# 	"m":1e-4
+# },
+# model config2: accuracy = 0.916843220338983 %
+

@@ -417,34 +417,34 @@ def train_parse_args():
 		"total_steps": 200000,
 		"model_config":{
             "config1":{
-                "d_model":100,
+                "d_model":120,
                 "num_heads":5,
 				"ffn_dim":2048,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
-				"dropout": 0.1,
-				"s": 8,
+				"dropout": 0.2,
+				"s": 15,
 				"m": 1e-5
             },
             "config2":{
-                "d_model":100,
+                "d_model":120,
                 "num_heads":5,
-				"ffn_dim":2048,
+				"ffn_dim":4096,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
-				"dropout": 0.1,
-				"s": 8,
+				"dropout": 0.2,
+				"s": 15,
 				"m":1e-4
             },
             "config3":{
-                "d_model":100,
+                "d_model":120,
                 "num_heads":5,
-				"ffn_dim":2048,
+				"ffn_dim":4096,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
-				"dropout": 0.1,
+				"dropout": 0.2,
 				"s": 15.0,
-				"m":1e-5
+				"m":1e-3
 			# 調整 s 與 m
 			
 

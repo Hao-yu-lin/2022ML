@@ -408,16 +408,16 @@ def test_parse_args():
 	config = {
 		"data_dir": "./Dataset",
 		"model_path": {
-			"model1":"./model01_88.ckpt",
-			"model2":"./model03_862.ckpt",
-			"model3":"./model03_860.ckpt",
+			"model1":"./model01_922.ckpt",
+			"model2":"./model03_936.ckpt",
+			"model3":"./model03_916.ckpt",
 			},
-		"output_path": "./model01_88.csv",
+		"output_path": "./model0331.csv",
 		"model_config":{
             "config1":{
-                "d_model":100,
-                "num_heads":5,
-				"ffn_dim":2048,
+				"d_model":160,
+				"num_heads":5,
+				"ffn_dim":4096,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
@@ -425,9 +425,9 @@ def test_parse_args():
 				"m":1e-4
             },
             "config2":{
-                "d_model":80,
-                "num_heads":5,
-				"ffn_dim":2048,
+				"d_model":200,
+				"num_heads":5,
+				"ffn_dim":4096,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
@@ -435,15 +435,14 @@ def test_parse_args():
 				"m":1e-4
             },
             "config3":{
-                "d_model":80,
-                "num_heads":4,
-				"ffn_dim":2048,
-				"num_layers":5,
+				"d_model":140,
+				"num_heads":5,
+				"ffn_dim":4096,
+				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
 				"s": 15.0,
 				"m":1e-4
-				
             },
 		}
 	}
@@ -496,11 +495,11 @@ def test_main(data_dir,model_path,output_path,model_config):
         with torch.no_grad():
             mels = mels.to(device)
             outs1 = model1(mels, predict = True)
-            # outs2 = model2(mels, predict = True)
-            # outs3 = model3(mels, predict = True)
+            outs2 = model2(mels, predict = True)
+            outs3 = model3(mels, predict = True)
 			
-            # outs = (outs1+outs2+outs3) / 3
-            preds = outs1.argmax(1).cpu().numpy()
+            outs = (outs1+outs2+outs3) / 3
+            preds = outs.argmax(1).cpu().numpy()
             for feat_path, pred in zip(feat_paths, preds):
                 results.append([feat_path, mapping["id2speaker"][str(pred)]])
 

@@ -403,9 +403,9 @@ def train_parse_args():
 		"total_steps": 200000,
 		"model_config":{
             "config1":{
-                "d_model":100,
+                "d_model":160,
                 "num_heads":5,
-				"ffn_dim":512,
+				"ffn_dim":4096,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
@@ -415,17 +415,17 @@ def train_parse_args():
             "config2":{
                 "d_model":100,
                 "num_heads":5,
-				"ffn_dim":256,
+				"ffn_dim":4096,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.1,
 				"s": 15.0,
-				"m":1e-4
+				"m":1e-3
             },
             "config3":{
-                "d_model":100,
+                "d_model":120,
                 "num_heads":5,
-				"ffn_dim":128,
+				"ffn_dim":4096,
 				"num_layers":3,
 				"depthwise_conv_kernel_size":3,
 				"dropout": 0.3,
@@ -565,3 +565,35 @@ print("time: %02d:%02d:%02d"%(hours,minutes,seconds))
 # 				"m":1e-4
 # d_model up accuracy up
 # dropout up accuracy down
+# ffn_dim up accuracy up
+
+
+# model config1: accuracy = 0.92920197740113 %
+# "config1":{
+	# "d_model":160,
+	# "num_heads":5,
+	# "ffn_dim":4096,
+	# "num_layers":3,
+	# "depthwise_conv_kernel_size":3,
+	# "dropout": 0.1,
+	# "s": 15.0,
+	# "m":1e-4
+# },
+
+
+# "config3":{
+# 	"d_model":120,
+# 	"num_heads":5,
+# 	"ffn_dim":4096,
+# 	"num_layers":3,
+# 	"depthwise_conv_kernel_size":3,
+# 	"dropout": 0.3,
+# 	"s": 15.0,
+# 	"m":1e-4
+# },
+# model config3: accuracy = 0.9021892655367232 %
+
+
+
+
+
